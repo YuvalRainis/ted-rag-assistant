@@ -1,5 +1,3 @@
-// scripts/index-ted.mjs - Final Production Ready Script
-
 import dotenv from "dotenv";
 import fs from "fs";
 import path from "path";
@@ -11,11 +9,9 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const projectRoot = path.resolve(__dirname, "..");
 
-
-// טעינת משתני סביבה מהנתיב המוחלט (Root/.env)
+// loading env variables from .env file in project root
 dotenv.config({ path: path.join(projectRoot, ".env") });
 
-// --- הגדרות קבועות ---
 const EMBED_URL = "https://api.llmod.ai/v1/embeddings";
 const EMBED_MODEL = "RPRTHPB-text-embedding-3-small";
 const EMBEDDING_DIM = 1536;
@@ -23,11 +19,9 @@ const CHUNK_SIZE = 1000;
 const CHUNK_OVERLAP = 200; // 20% overlap
 const TARGET_NAMESPACE = "__default__";
 
-// --- נתיבים מוחלטים ---
 const csvPath = path.join(projectRoot, "data", "ted_talks_en.csv");
 const progressFile = path.join(projectRoot, "progress.log");
 
-// --- טעינת משתני סביבה ---
 const apiKey = process.env.LLM_API_KEY;
 const pineconeKey = process.env.PINECONE_API_KEY;
 const indexName = process.env.PINECONE_INDEX_NAME;
@@ -37,7 +31,6 @@ if (!apiKey || !pineconeKey || !indexName) {
   process.exit(1);
 }
 
-// --- אתחול לקוחות ---
 const pc = new Pinecone({ apiKey: pineconeKey });
 const index = pc.index(indexName).namespace(TARGET_NAMESPACE);
 
@@ -171,7 +164,6 @@ async function run() {
     for (let i = 0; i < chunks.length; i++) {
       const chunkTextValue = chunks[i];
       const embedding = await getEmbedding(chunkTextValue);
-      // ID מורכב כדי למנוע כפילויות ולזהות צ'אנק ספציפי
       const vectorId = `${talk_id}-${i}`; 
 
       await safeUpsert([
