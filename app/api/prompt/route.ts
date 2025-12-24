@@ -3,7 +3,6 @@ import { Pinecone } from "@pinecone-database/pinecone";
 
 export const runtime = "nodejs";
 
-// --- Required System Prompt ---
 const SYSTEM_PROMPT = `
 You are a TED Talk assistant that answers questions strictly and only based on the TED dataset context provided to you (metadata and transcript passages). You must not use any external knowledge, the open internet, or information that is not explicitly contained in the retrieved context. If the answer cannot be determined from the provided context, respond: “I don’t know based on the provided TED data.” Always explain your answer using the given context, quoting or paraphrasing the relevant transcript or metadata when helpful.If the user asks for multiple results, list them clearly with numbered points.
 `.trim();
@@ -11,11 +10,10 @@ You are a TED Talk assistant that answers questions strictly and only based on t
 const EMBEDDING_DIM = 1536;
 const TOP_K = 15;
 
-// --- ENV ---
 const pineconeApiKey = process.env.PINECONE_API_KEY;
 const pineconeIndexName = process.env.PINECONE_INDEX_NAME;
 
-const llmApiKey = process.env.LLM_API_KEY;              // FIXED
+const llmApiKey = process.env.LLM_API_KEY;
 const llmodBaseUrl = process.env.LLMOD_BASE_URL || "https://api.llmod.ai";
 
 if (!pineconeApiKey || !pineconeIndexName) {
@@ -25,7 +23,6 @@ if (!pineconeApiKey || !pineconeIndexName) {
 const pineconeClient = new Pinecone({ apiKey: pineconeApiKey! });
 const index = pineconeClient.index(pineconeIndexName!);
 
-// --- Get Embedding from LLMod ---
 async function getEmbedding(text: string): Promise<number[]> {
   if (!llmApiKey) {
     throw new Error("Missing LLM_API_KEY in env");
@@ -58,7 +55,6 @@ async function getEmbedding(text: string): Promise<number[]> {
   return embedding;
 }
 
-// --- Call RPRTHPB-gpt-5-mini ---
 async function callTedModel(systemPrompt: string, userPrompt: string): Promise<string> {
   if (!llmApiKey) {
     throw new Error("Missing LLM_API_KEY in env");
@@ -76,7 +72,6 @@ async function callTedModel(systemPrompt: string, userPrompt: string): Promise<s
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt },
       ],
-      // temperature intentionally omitted (model does not support)
     }),
   });
 
@@ -109,10 +104,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 1) Convert question to embedding
     const queryEmbedding = await getEmbedding(question);
 
-    // 2) Query Pinecone
     const queryResult = await index.query({
       topK: TOP_K,
       vector: queryEmbedding,
@@ -121,7 +114,6 @@ export async function POST(req: NextRequest) {
 
     const matches = queryResult.matches ?? [];
 
-    // 3) Build context (NOW WITH FULL METADATA)
     const context = matches.map((m) => {
       const meta: any = m.metadata || {};
 
@@ -137,7 +129,17 @@ export async function POST(req: NextRequest) {
       };
     });
 
-    // 4) User Prompt sent to GPT model
+    if (context.length === 0) {
+      return NextResponse.json({
+        response: "I don’t know based on the provided TED data.",
+        context: [],
+        Augmented_prompt: {
+          System: SYSTEM_PROMPT,
+          User: `Question: ${question}\n\nContext:\n\n(No relevant TED data found)`,
+        },
+      });
+    }
+
     const userPrompt = `
 Question: ${question}
 
@@ -159,7 +161,6 @@ Chunk: ${c.chunk}`
 Remember: Answer strictly from the context above. If you cannot answer, say: "I don't know based on the provided TED data."
     `.trim();
 
-    // 5) Ask the language model
     const modelAnswer = await callTedModel(SYSTEM_PROMPT, userPrompt);
 
     return NextResponse.json({
