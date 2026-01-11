@@ -16,7 +16,7 @@ const EMBED_URL = "https://api.llmod.ai/v1/embeddings";
 const EMBED_MODEL = "RPRTHPB-text-embedding-3-small";
 const EMBEDDING_DIM = 1536;
 const CHUNK_SIZE = 1000;
-const CHUNK_OVERLAP = 200; // 20% overlap
+const CHUNK_OVERLAP = 200; 
 const TARGET_NAMESPACE = "__default__";
 
 const csvPath = path.join(projectRoot, "data", "ted_talks_en.csv");
@@ -27,14 +27,14 @@ const pineconeKey = process.env.PINECONE_API_KEY;
 const indexName = process.env.PINECONE_INDEX_NAME;
 
 if (!apiKey || !pineconeKey || !indexName) {
-  console.error("FATAL ERROR: Missing environment variables (LLM_API_KEY, PINECONE_API_KEY, or PINECONE_INDEX_NAME). Please check your .env file in the root directory and ensure the format is 'KEY=VALUE' without spaces.");
+  console.error("ERROR: Missing environment variables (LLM_API_KEY, PINECONE_API_KEY, or PINECONE_INDEX_NAME).");
   process.exit(1);
 }
 
 const pc = new Pinecone({ apiKey: pineconeKey });
 const index = pc.index(indexName).namespace(TARGET_NAMESPACE);
 
-console.log("--- Starting RAG Indexing Process ---");
+console.log("Starting RAG Indexing Process");
 console.log("Reading file from:", csvPath);
 
 // Helper: Sleep
@@ -42,9 +42,8 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-// ------------------------------------
-// 1. Safe Embedding (LLMod)
-// ------------------------------------
+// tracking the pinecone upsert
+// Safe Embedding (LLMod)
 async function getEmbedding(text, retries = 5) {
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
@@ -75,23 +74,19 @@ async function getEmbedding(text, retries = 5) {
   throw new Error("Failed to embed after all retries.");
 }
 
-// ------------------------------------
-// 2. Safe Pinecone Upsert (The critical part)
-// ------------------------------------
+
+// Safe Pinecone Upsert 
 async function safeUpsert(vectors, retries = 5) {
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
-      // ניסיון Upsert רגיל
       const response = await index.upsert(vectors);
       
-      // בדיקה מפורשת של תגובה מוצלחת (במקרה של כשל שקט)
-      // אם התגובה ריקה או שגויה, עדיין נרצה לדעת.
+      // if the response is empty or have a failing log a warning but continue
       if (!response) {
         console.warn(`Pinecone upsert returned empty response on attempt ${attempt}. Continuing.`);
       }
       return;
     } catch (err) {
-      // הדפסה אגרסיבית של השגיאה המלאה ללכידת הכשל השקט
       console.error(`FATAL UPSERT ERROR on attempt ${attempt}:`);
       console.error("Vector ID example:", vectors[0].id);
       console.error("Full Error Object:", err);
@@ -102,9 +97,7 @@ async function safeUpsert(vectors, retries = 5) {
   throw new Error("Failed to upsert after multiple retries.");
 }
 
-// ------------------------------------
-// 3. Chunking
-// ------------------------------------
+// Chunking
 function chunkText(text) {
   const chunks = [];
   let start = 0;
@@ -117,9 +110,7 @@ function chunkText(text) {
   return chunks;
 }
 
-// ------------------------------------
-// MAIN Function
-// ------------------------------------
+// the main Function
 async function run() {
   // Read progress if exists
   let startFrom = 1;
@@ -177,7 +168,7 @@ async function run() {
       vectorCounter++;
     }
 
-    // Print and save progress every 5 talks
+    // Print and save progress every 5 talks so i can monitor the process and see how much in pinecone if it will crash
     if (currentRow % 5 === 0) {
       console.log(`Processed talk row #${currentRow} (${vectorCounter} total vectors added this run)`);
       fs.writeFileSync(progressFile, currentRow.toString());
